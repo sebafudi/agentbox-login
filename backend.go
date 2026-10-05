@@ -401,6 +401,9 @@ func collect(ctx context.Context) Snapshot {
 	return Snapshot{Sessions: out, At: time.Now()}
 }
 func runAction(a Action) error {
+	if a.Verb == "scheduled-join" {
+		return joinScheduledRun(a.Name)
+	}
 	if a.Verb == "plain-shell" || a.Verb == "logout" {
 		return nil
 	}

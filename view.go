@@ -617,20 +617,20 @@ func relativeAge(age time.Duration) string {
 }
 
 func (m model) footer(width int) string {
-	help := "↑↓ move · Enter open · / find · p settings · ^T history · Esc logout"
+	help := "a jobs · ↑↓ move · Enter open · / find · p settings · ^T history · Esc logout"
 	if m.mode == "search" {
-		help = "↑ controls · ←→ select · Space change · ↓ results · ^T history · Esc back"
+		help = "^J jobs · ↑ controls · ←→ select · Space change · ↓ results · ^T history · Esc back"
 	}
 	if m.finder && m.mode == "search" {
-		help = "↑ controls · ←→ select · Space change · ↓ results · ^T history · Esc close"
+		help = "^J jobs · ↑ controls · ←→ select · Space change · ↓ results · ^T history · Esc close"
 	}
 	if m.mode == "settings" {
 		help = "Arrows move · Space/Enter change · Esc back"
 	}
 	if m.compactView() {
-		help = "↑↓ Enter / p ^T Esc"
+		help = "a jobs · ↑↓ Enter / p ^T Esc"
 		if m.mode == "search" {
-			help = "↑↓ ←→ Space ^T Tab Esc"
+			help = "^J jobs · ↑↓ ←→ Space ^T Tab Esc"
 		}
 		if m.mode == "settings" {
 			help = "Arrows Space Esc"
@@ -650,7 +650,7 @@ func (m model) footer(width int) string {
 		status = ""
 	}
 	footer := lipgloss.NewStyle().Foreground(muted).Background(surface).Width(width).Padding(0, 1)
-	return restoreBackground(footer.Render(rightAligned(fit(help, max(1, width-lipgloss.Width(status)-3)), lipgloss.NewStyle().Foreground(mint).Render(status), width-2)), surfaceBG)
+	return mouseZones.Mark("scheduled-entry", restoreBackground(footer.Render(rightAligned(fit(help, max(1, width-lipgloss.Width(status)-3)), lipgloss.NewStyle().Foreground(mint).Render(status), width-2)), surfaceBG))
 }
 
 func (m model) home(width, limit int) string {
@@ -915,6 +915,8 @@ func (m model) View() tea.View {
 	margin := min(2, max(0, m.h-28))
 	var content string
 	switch m.mode {
+	case "scheduled":
+		content = m.scheduledView(width)
 	case "settings":
 		content = m.settings(width)
 	case "search":
@@ -931,7 +933,7 @@ func (m model) View() tea.View {
 	box := m.frame(content, width)
 	if lipgloss.Height(box) > m.h {
 		// The smallest home surface keeps both action and filter shortcuts visible.
-		box = m.frame(m.header(width)+"\n"+fit("o r c l s h / p", width)+"\n"+m.filterBar(width)+"\n"+m.footer(width), width)
+		box = m.frame(m.header(width)+"\n"+fit("o r c l s h / p · a jobs", width)+"\n"+m.filterBar(width)+"\n"+m.footer(width), width)
 	}
 	v := tea.NewView(mouseZones.Scan(restoreBackground(lipgloss.Place(m.w, m.h, lipgloss.Center, lipgloss.Center, box, lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(ink))), inkBG) + ansi.ResetStyle))
 	v.AltScreen = true

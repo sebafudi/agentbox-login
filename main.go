@@ -26,19 +26,29 @@ func main() {
 		return
 	}
 	finder := len(os.Args) > 1 && os.Args[1] == "--find-agent"
-	if len(os.Args) > 1 && !finder {
-		fmt.Fprintln(os.Stderr, "usage: agentbox-login [--find-agent|--refresh]")
+	scheduled := len(os.Args) > 1 && os.Args[1] == "--scheduled-jobs"
+	if len(os.Args) > 1 && !finder && !scheduled {
+		fmt.Fprintln(os.Stderr, "usage: agentbox-login [--find-agent|--scheduled-jobs|--refresh]")
 		os.Exit(1)
 	}
 	notice := ""
 	for {
-		program := tea.NewProgram(initialModel(finder, notice))
+		initial := initialModel(finder, notice)
+		if scheduled {
+			initial.mode = "scheduled"
+			initial.scheduled.returnMode = "home"
+			initial.scheduled.queryFocus = true
+			initial.scheduled.query.Focus()
+			initial.scheduled.notice = notice
+		}
+		program := tea.NewProgram(initial)
 		result, err := program.Run()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		m := result.(model)
+		scheduled = m.mode == "scheduled"
 		switch m.action.Verb {
 		case "logout":
 			if finder {

@@ -206,6 +206,7 @@ type model struct {
 	action         Action
 	notice         string
 	refreshing     bool
+	scheduled      schedulerUI
 }
 
 func initialModel(finder bool, notice string) model {
@@ -217,7 +218,7 @@ func initialModel(finder bool, notice string) model {
 	loader := spinner.New()
 	loader.Spinner = spinner.Dot
 	loader.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#ACF1C6"))
-	m := model{snapshot: loadCache(), prefs: readPrefs(), input: input, spinner: loader, mode: "home", finder: finder, notice: notice, refreshing: true}
+	m := model{snapshot: loadCache(), prefs: readPrefs(), input: input, spinner: loader, mode: "home", finder: finder, notice: notice, refreshing: true, scheduled: newSchedulerUI()}
 	if finder {
 		m.mode = "search"
 		m.input.Focus()
@@ -237,6 +238,12 @@ func refresh() tea.Msg {
 }
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
+		func() tea.Msg {
+			if m.mode == "scheduled" {
+				return schedulerLoad(m.scheduled.generation)()
+			}
+			return nil
+		},
 		refresh,
 		m.spinner.Tick,
 		tea.Tick(10*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }),
@@ -293,6 +300,9 @@ func (m *model) keepName(name string) {
 	}
 }
 func (m *model) clamp() {
+	if m.mode == "scheduled" {
+		return
+	}
 	count := len(m.listed())
 	if m.mode == "home" {
 		count += len(quickActions)
@@ -316,11 +326,30 @@ func (m *model) clamp() {
 	}
 }
 func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	switch message.(type) {
+	case schedulerSnapshotMsg, schedulerMutationMsg, schedulerLogMsg, schedulerModelCatalogMsg:
+		return m.updateScheduled(message)
+	}
+	if m.mode == "scheduled" {
+		switch msg := message.(type) {
+		case tea.WindowSizeMsg, ageMsg, tickMsg, snapshotMsg, spinner.TickMsg:
+			// Shared workspace timers and dimensions continue behind this view.
+		case tea.KeyPressMsg:
+			if msg.String() == "ctrl+c" {
+				m.action = Action{Verb: "logout"}
+				return m, tea.Quit
+			}
+			return m.updateScheduled(message)
+		default:
+			return m.updateScheduled(message)
+		}
+	}
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.w = msg.Width
 		m.h = msg.Height
 		m.input.SetWidth(max(8, min(60, m.w-14)))
+		m.scheduled.query.SetWidth(max(1, m.w-14))
 		if m.w < 60 {
 			m.input.Placeholder = "Find sessions…"
 		} else {
@@ -331,12 +360,25 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg { return ageMsg(t) })
 	case tickMsg:
 		cmd := tea.Tick(10*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+		if m.mode == "scheduled" {
+			cmd = tea.Batch(cmd, m.scheduled.refresh())
+			if m.scheduled.page == "log" {
+				cmd = tea.Batch(cmd, m.scheduled.fetchLog())
+			}
+		}
 		if !m.refreshing {
 			m.refreshing = true
 			return m, tea.Batch(cmd, refresh, m.spinner.Tick)
 		}
 		return m, cmd
 	case snapshotMsg:
+		mode := m.mode
+		if mode == "scheduled" {
+			m.mode = m.scheduled.returnMode
+			if m.mode != "search" {
+				m.mode = "home"
+			}
+		}
 		name := m.focusName()
 		m.refreshing = false
 		if msg.Err == "" {
@@ -346,6 +388,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = msg.Err
 		}
 		m.clamp()
+		m.mode = mode
 	case spinner.TickMsg:
 		if m.refreshing {
 			var cmd tea.Cmd
@@ -377,6 +420,9 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if key == "ctrl+c" {
 			m.action = Action{Verb: "logout"}
 			return m, tea.Quit
+		}
+		if (key == "ctrl+j" && (m.mode == "home" || m.mode == "search")) || (key == "a" && m.mode == "home") {
+			return m.openScheduledJobs()
 		}
 		if key == "ctrl+t" && (m.mode == "home" || m.mode == "search") {
 			m.cycleHistory()
@@ -435,6 +481,9 @@ func (m *model) cycleHistory() {
 }
 
 func (m model) mouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	if (m.mode == "home" || m.mode == "search") && mouseZones.Get("scheduled-entry").InBounds(msg) {
+		return m.openScheduledJobs()
+	}
 	if m.mode == "settings" {
 		for i := 0; i < 5; i++ {
 			if mouseZones.Get(fmt.Sprintf("setting-%d", i)).InBounds(msg) {

@@ -388,7 +388,7 @@ func render(r map[string]string) string {
 	p("## System")
 	p("- Uptime: %s, load %s", uptime(), strings.Join(load[:3], " "))
 	p("- Kernel: %s · %s", first(file("/proc/sys/kernel/osrelease")), osname)
-	p("- Memory: %s. The balloon driver can shrink total RAM to ~2 GiB when the Proxmox host is short.", mem())
+	p("- Memory: %s.", mem())
 	p("- Disk: %s on /", disk())
 	p("- Last full `pacman -Syu`: %s (install: %s)", lastUpgrade(), installDate())
 	p("- Failed units: system: %s; user: %s", units(r["failed"]), units(r["ufailed"]))
